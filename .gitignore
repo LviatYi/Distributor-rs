@@ -1,0 +1,7 @@
+/target
+
+
+# Idea
+**/.idea/**/*
+!**/.idea/runConfigurations
+!**/.idea/runConfigurations/**/*

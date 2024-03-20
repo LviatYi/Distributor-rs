@@ -1,0 +1,3 @@
+[[items]]
+from = "resource/template.txt"
+to = ["test-target/config"]

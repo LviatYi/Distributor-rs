@@ -1,0 +1,30 @@
+name: Rust Build and Package
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build_and_package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Archive release
+        run: zip -r release.zip target/release/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: release
+          path: release.zip

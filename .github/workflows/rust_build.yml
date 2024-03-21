@@ -31,6 +31,11 @@ jobs:
           echo "SRC_FILENAME=${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-source.zip" >> $GITHUB_ENV
           echo "RLS_FILENAME=${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-release.zip" >> $GITHUB_ENV
 
+      - name: Print Env variable
+        run: |
+          echo "SRC_FILENAME: $Env:SRC_FILENAME"
+          echo "RLS_FILENAME: $Env:RLS_FILENAME"
+
       - name: Set up Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -42,7 +47,7 @@ jobs:
         run: cargo build --release --target x86_64-pc-windows-msvc
 
       - name: Archive release binary
-        run: Compress-Archive -Path target/x86_64-pc-windows-msvc/release/*.exe -DestinationPath ${{ env.RLS_FILENAME }}
+        run: Compress-Archive -Path target/x86_64-pc-windows-msvc/release/*.exe -DestinationPath $Env:RLS_FILENAME
 
       - name: Archive source code
         run: git archive -o ${{env.SRC_FILENAME}} HEAD

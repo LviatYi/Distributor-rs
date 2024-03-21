@@ -40,7 +40,7 @@ jobs:
         run: Compress-Archive -Path target/x86_64-pc-windows-msvc/release/*.exe -DestinationPath ${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-release.zip
 
       - name: Archive source code
-        run: git archive -o source.zip HEAD
+        run: git archive -o ${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-source.zip HEAD
 
       - name: Upload release binary as artifact
         uses: actions/upload-artifact@v2

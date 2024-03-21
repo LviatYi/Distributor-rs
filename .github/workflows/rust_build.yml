@@ -33,8 +33,8 @@ jobs:
 
       - name: Print Env variable
         run: |
-          echo "SRC_FILENAME: $Env:SRC_FILENAME"
-          echo "RLS_FILENAME: $Env:RLS_FILENAME"
+          echo "SRC_FILENAME: ${{env.SRC_FILENAME}}"
+          echo "RLS_FILENAME: ${{env.RLS_FILENAME}}"
 
       - name: Set up Rust
         uses: actions-rs/toolchain@v1
@@ -47,7 +47,7 @@ jobs:
         run: cargo build --release --target x86_64-pc-windows-msvc
 
       - name: Archive release binary
-        run: Compress-Archive -Path target/x86_64-pc-windows-msvc/release/*.exe -DestinationPath $Env:RLS_FILENAME
+        run: "Compress-Archive -Path target/x86_64-pc-windows-msvc/release/*.exe -DestinationPath ${{env.RLS_FILENAME}}"
 
       - name: Archive source code
         run: git archive -o ${{env.SRC_FILENAME}} HEAD

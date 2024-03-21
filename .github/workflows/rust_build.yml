@@ -28,8 +28,10 @@ jobs:
 
       - name: Set filenames as Env variable
         run: |
-          echo "SRC_FILENAME=${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-source.zip" >> $GITHUB_ENV
-          echo "RLS_FILENAME=${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-release.zip" >> $GITHUB_ENV
+#          echo "SRC_FILENAME=${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-source.zip" >> $GITHUB_ENV
+#          echo "RLS_FILENAME=${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-release.zip" >> $GITHUB_ENV
+          echo "SRC_FILENAME=source.zip" >> $GITHUB_ENV
+          echo "RLS_FILENAME=release.zip" >> $GITHUB_ENV
 
       - name: Print Env variable
         run: |

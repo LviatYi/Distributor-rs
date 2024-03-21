@@ -26,6 +26,11 @@ jobs:
           file: 'Cargo.toml'
           field: 'package.version'
 
+      - name: Set filenames as Env variable
+        run: |
+          echo "SRC_FILENAME=${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-source.zip" >> $GITHUB_ENV
+          echo "RLS_FILENAME=${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-release.zip" >> $GITHUB_ENV
+
       - name: Set up Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -37,22 +42,22 @@ jobs:
         run: cargo build --release --target x86_64-pc-windows-msvc
 
       - name: Archive release binary
-        run: Compress-Archive -Path target/x86_64-pc-windows-msvc/release/*.exe -DestinationPath ${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-release.zip
+        run: Compress-Archive -Path target/x86_64-pc-windows-msvc/release/*.exe -DestinationPath ${{ env.RLS_FILENAME }}
 
       - name: Archive source code
-        run: git archive -o ${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-source.zip HEAD
+        run: git archive -o ${{env.SRC_FILENAME}} HEAD
 
       - name: Upload release binary as artifact
         uses: actions/upload-artifact@v2
         with:
           name: windows-release
-          path: ${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-release.zip
+          path: ${{ env.RLS_FILENAME }}
 
       - name: Upload source code as artifact
         uses: actions/upload-artifact@v2
         with:
           name: source-code
-          path: ${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-source.zip
+          path: ${{env.SRC_FILENAME}}
 
       - name: Create Release
         id: create_release
@@ -71,8 +76,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-release.zip
-          asset_name: ${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-release.zip
+          asset_path: ./${{ env.RLS_FILENAME }}
+          asset_name: ${{ env.RLS_FILENAME }}
           asset_content_type: application/zip
 
       - name: Upload Source Code
@@ -81,6 +86,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-source.zip
-          asset_name: ${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-source.zip
+          asset_path: ./${{env.SRC_FILENAME}}
+          asset_name: ${{env.SRC_FILENAME}}
           asset_content_type: application/zip

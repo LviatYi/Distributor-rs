@@ -29,7 +29,7 @@ jobs:
       - name: Set filenames as Env variable
         run: |
           echo "SRC_FILENAME=${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-source.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
-          echo "RLS_FILENAME=${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-release.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "RLS_FILENAME=${{ steps.get_cargo_package_name.outputs.value }}-${{ github.ref_name }}-release.exe" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Print Env variable
         run: |
@@ -46,9 +46,6 @@ jobs:
       - name: Build
         run: cargo build --release --target x86_64-pc-windows-msvc
 
-      - name: Archive release binary
-        run: "Compress-Archive -Path target/x86_64-pc-windows-msvc/release/*.exe -DestinationPath ${{env.RLS_FILENAME}}"
-
       - name: Archive source code
         run: git archive -o ${{env.SRC_FILENAME}} HEAD
 
@@ -56,7 +53,7 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: windows-release
-          path: ${{ env.RLS_FILENAME }}
+          path: ./target/x86_64-pc-windows-msvc/release/${{ steps.get_cargo_package_name.outputs.value }}.exe
 
       - name: Upload source code as artifact
         uses: actions/upload-artifact@v2
@@ -81,7 +78,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./${{ env.RLS_FILENAME }}
+          asset_path: ./target/x86_64-pc-windows-msvc/release/${{ steps.get_cargo_package_name.outputs.value }}.exe
           asset_name: ${{ env.RLS_FILENAME }}
           asset_content_type: application/zip
 

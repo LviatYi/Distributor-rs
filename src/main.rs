@@ -86,16 +86,23 @@ fn main() {
         Commands::Run => {
             let mut distributor = distributor::Distributor::new();
             config.iter().for_each(|config_item| {
+                let count = config_item.to.len();
+                let mut index = 0;
                 config_item.to.iter().for_each(|to| {
-                    let result = distributor.copy_to(config_item.from.as_path(), to.as_path(), true)
-                                            .map(|results| {
-                                                for result in results {
-                                                    println!("{}", result);
-                                                };
-                                            });
+                    let result = distributor
+                        .copy_to(config_item.from.as_path(),
+                                 to.as_path(),
+                                 true,
+                                 index == count - 1)
+                        .map(|results| {
+                            for result in results {
+                                println!("{}", result);
+                            };
+                        });
                     if result.is_err() {
                         println!("{:?}", result.err().unwrap());
                     }
+                    index += 1;
                 });
             });
         }

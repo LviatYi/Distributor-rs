@@ -34,7 +34,8 @@ impl Distributor {
     ///
     /// - `source_path` - 要复制的文件的路径。如果是文件夹，将会递归复制文件夹中的文件。
     /// - `target_path` - 目标文件的路径，如果是文件夹，将会在文件夹中创建一个与源文件同名的文件。
-    pub fn copy_to(&mut self, source_path: &Path, target_path: &Path, recursion: bool) -> DistributorResult<Vec<String>> {
+    /// - `recursion` - 是否递归复制文件夹中的文件。
+    pub fn copy_to(&mut self, source_path: &Path, target_path: &Path, recursion: bool, update_record: bool) -> DistributorResult<Vec<String>> {
         if source_path.is_dir() {
             if target_path.is_file() {
                 return Err(DistributorError::InvalidInput("target need to be a dir when source is dir.".to_string()));
@@ -49,9 +50,9 @@ impl Distributor {
                                 .ok()) {
                         let result;
                         if sub_source_path.is_dir() && recursion {
-                            result = self.copy_to(&sub_source_path, &target_path.join(sub_source_path.file_name().unwrap()), recursion);
+                            result = self.copy_to(&sub_source_path, &target_path.join(sub_source_path.file_name().unwrap()), recursion, update_record);
                         } else {
-                            result = self.copy_to(&sub_source_path, target_path, recursion);
+                            result = self.copy_to(&sub_source_path, target_path, recursion, update_record);
                         }
                         match result {
                             Ok(paths) => {
@@ -80,14 +81,14 @@ impl Distributor {
             };
 
             if final_target_path.exists() && !self.db_cache.is_file_outdated(source_path) {
-                println!("file at {:?} is up to date. skip.", final_target_path);
+                println!("[LATEST] file at {:?} is up to date. skip.", final_target_path);
                 return Ok(vec![]);
             }
 
             let result = copy_file_to_with_default_name(source_path, target_path, file_name);
             match result {
                 Ok(path) => {
-                    self.db_cache.update_file_record(source_path);
+                    if update_record { self.db_cache.update_file_record(source_path); }
                     Ok(vec![path])
                 }
                 Err(e) => { Err(e) }
@@ -113,7 +114,7 @@ pub fn copy_file_with_full_target_path(source_file_path: &Path, target_file_path
     if target_file_path.exists() {
         if let Ok(cmp_result) = compare_file(source_file_path, target_file_path) {
             if cmp_result {
-                return Ok(format!("[Same]{}", target_file_path.to_str().unwrap().to_string()));
+                return Ok(format!("[Same] {}", target_file_path.to_str().unwrap().to_string()));
             }
         }
     }
@@ -125,7 +126,7 @@ pub fn copy_file_with_full_target_path(source_file_path: &Path, target_file_path
                 }
             }
             return match std::fs::write(target_file_path, &content) {
-                Ok(_) => { Ok(format!("[Copied]{}", target_file_path.to_str().unwrap().to_string())) }
+                Ok(_) => { Ok(format!("[Copied] {}", target_file_path.to_str().unwrap().to_string())) }
                 Err(e) => { Err(DistributorError::IoError(e)) }
             };
         }
@@ -192,7 +193,7 @@ mod tests {
         let file_path = Path::new(&"resource/");
         let target_path = Path::new("test-target/copy-to/");
 
-        let _ = Distributor::new().copy_to(file_path, &target_path, true);
+        let _ = Distributor::new().copy_to(file_path, &target_path, true, false);
 
         assert_eq!(
             std::fs::read_to_string(file_path.join("sub-resource-dir-a/template-a.txt")).unwrap(),

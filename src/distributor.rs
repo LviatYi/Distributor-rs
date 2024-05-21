@@ -35,7 +35,11 @@ impl Distributor {
     /// - `source_path` - 要复制的文件的路径。如果是文件夹，将会递归复制文件夹中的文件。
     /// - `target_path` - 目标文件的路径，如果是文件夹，将会在文件夹中创建一个与源文件同名的文件。
     /// - `recursion` - 是否递归复制文件夹中的文件。
-    pub fn copy_to(&mut self, source_path: &Path, target_path: &Path, recursion: bool, update_record: bool) -> DistributorResult<Vec<String>> {
+    pub fn copy_to(&mut self,
+                   source_path: &Path,
+                   target_path: &Path,
+                   recursion: bool,
+                   update_record: bool) -> DistributorResult<Vec<String>> {
         if source_path.is_dir() {
             if target_path.is_file() {
                 return Err(DistributorError::InvalidInput("target need to be a dir when source is dir.".to_string()));

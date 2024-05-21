@@ -11,6 +11,7 @@ toml = "0.8.11"
 serde = { version = "1.0.197", features = ["derive"] }
 clap = { version = "4.5.3", features = ["derive"] }
 sha2 = "0.10.8"
+glob = "0.3.1"
 
 [profile.release]
 lto = true

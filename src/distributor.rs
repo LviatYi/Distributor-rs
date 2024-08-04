@@ -1,12 +1,15 @@
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::Read;
-use std::path::{Path};
+use std::path::Path;
+
+use crate::distributor::DistributorResultType::{Copied, Same, UpToDate};
 use crate::distributor_cache_db::FileDistributorCache;
+use crate::distributor_config::DistributorItem;
 
 #[derive(Debug)]
 pub enum DistributorError {
     IoError(std::io::Error),
-    InvalidInput(String),
 }
 
 impl From<std::io::Error> for DistributorError {
@@ -15,7 +18,15 @@ impl From<std::io::Error> for DistributorError {
     }
 }
 
-pub type DistributorResult<T> = Result<T, DistributorError>;
+#[derive(Debug)]
+pub enum DistributorResultType {
+    Copied(String, String),
+    Same(String, String),
+    Saved,
+    UpToDate(String),
+}
+
+pub type DistributorResult = Result<DistributorResultType, DistributorError>;
 
 pub struct Distributor {
     pub db_cache: FileDistributorCache,
@@ -24,96 +35,140 @@ pub struct Distributor {
 impl Distributor {
     pub fn new() -> Self {
         Distributor {
-            db_cache: FileDistributorCache::load(),
+            db_cache: FileDistributorCache::load(None),
         }
     }
 
-    /// Copy file to target paths.
+    pub fn do_copy(&mut self, config_item: &DistributorItem, force: bool, debug: bool) {
+        let mut results = vec![];
+        if config_item.is_point_to_file() {
+            if !force && !self.db_cache.is_file_outdated(&config_item.root) {
+                results.push(
+                    Ok(DistributorResultType::UpToDate(
+                        config_item.root
+                                   .to_str()
+                                   .unwrap()
+                                   .to_string())));
+            } else {
+                let file_name = config_item.root
+                                           .file_name()
+                                           .and_then(|item| item.to_str())
+                                           .ok_or(DistributorError::IoError(
+                                               std::io::Error::new(std::io::ErrorKind::InvalidInput,
+                                                                   "file name is invalid.")
+                                           ))
+                                           .unwrap();
+                for to in config_item.to.iter() {
+                    results.push(copy_file_to_with_default_name(
+                        &config_item.root.to_path_buf(),
+                        to,
+                        file_name));
+                }
+                self.db_cache.update_file_record(&config_item.root);
+            }
+        } else if let Ok(source_set) = config_item.get_non_root_source_file() {
+            let outdated_source: HashSet<&Path> = source_set
+                .iter()
+                .filter(|source| {
+                    return if force || self.db_cache.is_file_outdated(source) {
+                        true
+                    } else {
+                        results.push(Ok(UpToDate(source.to_str().unwrap().to_string())));
+                        false
+                    };
+                })
+                .map(|item| { item.as_path() })
+                .collect();
+
+            for to in config_item.to.iter() {
+                self.copy_by_source_to(&config_item.root, &outdated_source, to)
+                    .into_iter()
+                    .for_each(|r| {
+                        results.push(r);
+                    });
+
+                source_set.iter().for_each(|source| {
+                    self.db_cache.update_file_record(source);
+                });
+            }
+        }
+
+        if debug {
+            for result in results {
+                match result {
+                    Ok(tp) => {
+                        match tp {
+                            Copied(f, t) => {
+                                println!("[Copied]{:?}{:?}", f, t);
+                            }
+                            Same(f, t) => {
+                                println!("[Same]{:?}{:?}", f, t);
+                            }
+                            UpToDate(f) => {
+                                println!("[UpToDate]{:?}", f);
+                            }
+                            DistributorResultType::Saved => {}
+                        }
+                        self.db_cache.update_file_record(&config_item.root);
+                    }
+                    Err(e) => {
+                        println!("[Error {:?}]", e);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Copy files by source_path to target dir.
     ///
     /// # Param
     ///
-    /// - `source_path` - 要复制的文件的路径。如果是文件夹，将会递归复制文件夹中的文件。
-    /// - `target_path` - 目标文件的路径，如果是文件夹，将会在文件夹中创建一个与源文件同名的文件。
-    pub fn copy_to(&mut self, source_path: &Path, target_path: &Path, recursion: bool) -> DistributorResult<Vec<String>> {
-        if source_path.is_dir() {
-            if target_path.is_file() {
-                return Err(DistributorError::InvalidInput("target need to be a dir when source is dir.".to_string()));
-            }
-            match std::fs::read_dir(source_path) {
-                Ok(entries) => {
-                    let mut successed = Vec::new();
-                    for sub_source_path in entries
-                        .filter_map(|result|
-                            result
-                                .and_then(|e| Ok(e.path()))
-                                .ok()) {
-                        let result;
-                        if sub_source_path.is_dir() && recursion {
-                            result = self.copy_to(&sub_source_path, &target_path.join(sub_source_path.file_name().unwrap()), recursion);
-                        } else {
-                            result = self.copy_to(&sub_source_path, target_path, recursion);
-                        }
-                        match result {
-                            Ok(paths) => {
-                                successed.extend(paths);
-                            }
-                            Err(e) => {
-                                return Err(e);
-                            }
-                        }
-                    }
+    /// - `root` - 待复制的文件的根路径。
+    /// - `source_path` - 待复制的文件的路径。
+    /// - `to` - 目标目录。
+    fn copy_by_source_to(&mut self,
+                         root: &Path,
+                         source_paths: impl IntoIterator<Item=impl AsRef<Path>>,
+                         to: &Path) -> Vec<DistributorResult> {
+        let mut successed: Vec<DistributorResult> = Vec::new();
 
-                    Ok(successed)
-                }
-                Err(e) => { Err(DistributorError::IoError(e)) }
-            }
-        } else {
-            let file_name = source_path
-                .file_name()
-                .and_then(|item| item.to_str())
-                .ok_or(DistributorError::IoError(std::io::Error::new(std::io::ErrorKind::InvalidInput, "file name is invalid.")))?;
+        for source in source_paths {
+            let target_path = to.join(source.as_ref().strip_prefix(root).unwrap());
 
-            let final_target_path = if target_path.is_dir() {
-                target_path.join(file_name)
-            } else {
-                target_path.to_path_buf()
-            };
-
-            if final_target_path.exists() && !self.db_cache.is_file_outdated(source_path) {
-                println!("file at {:?} is up to date. skip.", final_target_path);
-                return Ok(vec![]);
-            }
-
-            let result = copy_file_to_with_default_name(source_path, target_path, file_name);
-            match result {
-                Ok(path) => {
-                    self.db_cache.update_file_record(source_path);
-                    Ok(vec![path])
-                }
-                Err(e) => { Err(e) }
-            }
+            successed.push(copy_file_with_full_target_path(source.as_ref(), &target_path));
         }
+
+        successed
+    }
+
+    pub fn clear_cache(&mut self) {
+        let _ = FileDistributorCache::clear(None);
+        self.db_cache = FileDistributorCache::default();
     }
 }
 
 impl Drop for Distributor {
     fn drop(&mut self) {
-        println!("save cache.");
-        let _ = self.db_cache.save();
+        if !self.db_cache.is_empty() {
+            println!("save cache.");
+            let _ = self.db_cache.save(None);
+        }
     }
 }
 
-/// Copy file to full  target paths.
+/// Copy file to full target paths.
 ///
 /// # Param
 ///
-/// - `source_file_path` - 要复制的文件的路径。
+/// - `source_file_path` - 待复制的文件的路径。
 /// - `target_file_path` - 目标文件的路径，包括文件名。如果路径中的目录不存在，将会被创建。
-pub fn copy_file_with_full_target_path(source_file_path: &Path, target_file_path: &Path) -> DistributorResult<String> {
-    if target_file_path.exists() {
+pub fn copy_file_with_full_target_path(source_file_path: &Path,
+                                       target_file_path: &Path) -> DistributorResult {
+    if target_file_path.is_file() {
         if let Ok(cmp_result) = compare_file(source_file_path, target_file_path) {
             if cmp_result {
-                return Ok(format!("[Same]{}", target_file_path.to_str().unwrap().to_string()));
+                return Ok(Same(source_file_path.to_str().unwrap().to_string(),
+                               target_file_path.to_str().unwrap().to_string()));
             }
         }
     }
@@ -124,8 +179,11 @@ pub fn copy_file_with_full_target_path(source_file_path: &Path, target_file_path
                     std::fs::create_dir_all(parent_path)?;
                 }
             }
-            return match std::fs::write(target_file_path, &content) {
-                Ok(_) => { Ok(format!("[Copied]{}", target_file_path.to_str().unwrap().to_string())) }
+            return match std::fs::write(target_file_path, content) {
+                Ok(_) => {
+                    Ok(Copied(source_file_path.to_str().unwrap().to_string(),
+                              target_file_path.to_str().unwrap().to_string()))
+                }
                 Err(e) => { Err(DistributorError::IoError(e)) }
             };
         }
@@ -139,10 +197,12 @@ pub fn copy_file_with_full_target_path(source_file_path: &Path, target_file_path
 ///
 /// # Param
 ///
-/// - `source_file_path` - 要复制的文件的路径。
+/// - `source_file_path` - 待复制的文件的路径。
 /// - `target_path` - 目标文件的路径，如果是文件夹，将会在文件夹中创建一个与源文件同名的文件。
-/// - `default_name` - 如果目标路径是文件夹，将会使用这个默认文件名。
-pub fn copy_file_to_with_default_name(source_file_path: &Path, target_path: &Path, default_name: &str) -> DistributorResult<String> {
+/// - `default_name` - 如果目标路径是文件夹，将会使用此默认文件名。
+pub fn copy_file_to_with_default_name(source_file_path: &Path,
+                                      target_path: &Path,
+                                      default_name: &str) -> DistributorResult {
     if target_path.is_file() {
         copy_file_with_full_target_path(source_file_path, target_path)
     } else {
@@ -185,14 +245,16 @@ fn compare_file(source_path: &Path, target_path: &Path) -> FileCompareResult {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
 
     #[test]
     fn test_copy_to() {
         let file_path = Path::new(&"resource/");
-        let target_path = Path::new("test-target/copy-to/");
+        // let target_path = Path::new("test-target/copy-to/");
 
-        let _ = Distributor::new().copy_to(file_path, &target_path, true);
+        // let _ = Distributor::new().copy_to(file_path, &target_path, true);
 
         assert_eq!(
             std::fs::read_to_string(file_path.join("sub-resource-dir-a/template-a.txt")).unwrap(),
@@ -251,5 +313,19 @@ mod tests {
             compare_file(source_path, target_path).unwrap(),
             true,
         );
+    }
+
+    #[test]
+    fn lab() {
+        println!("{:?}", std::env::current_dir().unwrap());
+        let path = PathBuf::from("resource//////sub-resource-dir-a");
+        let path2 = PathBuf::from("resource\\sub-resource-dir-a");
+
+        let root = "resource";
+
+        println!("{:?}", path.eq(&path2));
+        if path.starts_with(root) {
+            println!("{:?}", path.strip_prefix(root).unwrap());
+        };
     }
 }

@@ -1,8 +1,9 @@
 use std::collections::HashMap;
-use std::io::Read;
 use std::path::{Path, PathBuf};
+
 use serde::{Deserialize, Serialize};
-use crate::distributor::DistributorResult;
+
+use crate::distributor::{DistributorResult, DistributorResultType};
 
 #[derive(Debug)]
 pub enum QueryMetaError {
@@ -15,59 +16,80 @@ impl From<std::io::Error> for QueryMetaError {
     }
 }
 
+static DEFAULT_DB_PATH: &str = ".distributor/distributor_cache.db";
+
 pub type QueryMetaResult<T> = Result<T, QueryMetaError>;
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct FileDistributorCache {
-    files: HashMap<PathBuf, String>,
+    files_touch_time_record: HashMap<PathBuf, String>,
+
+    loaded_path: PathBuf,
 }
 
 impl FileDistributorCache {
-    pub fn load() -> Self {
-        match std::fs::read_to_string(".distributor/distributor_cache_db") {
+    pub fn load(path: Option<&Path>) -> Self {
+        let path = path.unwrap_or(Path::new(DEFAULT_DB_PATH));
+        let mut dtb_cache: Self;
+        match std::fs::read_to_string(path) {
             Ok(cache_str) => {
-                return toml::from_str(cache_str.as_str()).unwrap_or_default();
+                dtb_cache = bincode::deserialize(cache_str.as_bytes()).unwrap_or_default();
             }
             Err(_) => {
-                println!("cached file not exist.")
+                println!("cached file not exist.");
+                dtb_cache = FileDistributorCache::default();
             }
         }
 
-        FileDistributorCache::default()
+        dtb_cache.loaded_path = path.to_path_buf();
+        dtb_cache
     }
 
-    pub fn save(&self) -> DistributorResult<()> {
-        let cache_str = toml::to_string(self).unwrap();
-        let cache_dir: &Path = Path::new(".distributor/distributor_cache_db");
+    pub fn save(&self, path: Option<&Path>) -> DistributorResult {
+        let path = path.unwrap_or(self.loaded_path.as_path());
+        let cache_str = bincode::serialize(self).unwrap();
 
-        if let Some(parent) = cache_dir.parent() {
+        if let Some(parent) = path.parent() {
             if !parent.exists() {
                 std::fs::create_dir_all(parent)?;
             }
         }
-        std::fs::write(".distributor/distributor_cache_db", cache_str)?;
-        Ok(())
-    }
 
-    fn get_file_record(&self, file_path: &Path) -> Option<u128> {
-        self.files
-            .get(file_path)
-            .map(|t| t.parse().unwrap())
+        std::fs::write(path, cache_str)?;
+        Ok(DistributorResultType::Saved)
     }
 
     pub fn update_file_record(&mut self, file_path: &Path) {
         if let Ok(timestamp) = get_file_last_modified_timestamp(file_path) {
-            self.files.insert(file_path.to_path_buf(), timestamp.to_string());
+            self.files_touch_time_record.insert(
+                file_path.to_path_buf(),
+                timestamp.to_string());
         }
     }
 
     pub fn is_file_outdated(&self, file_path: &Path) -> bool {
-        if let Some(timestamp) = self.get_file_record(file_path) {
-            if let Ok(current_timestamp) = get_file_last_modified_timestamp(file_path) {
-                return current_timestamp > timestamp;
+        if let Some(distribute_time) = self.get_file_record(file_path) {
+            if let Ok(last_change) = get_file_last_modified_timestamp(file_path) {
+                return last_change > distribute_time;
             }
         }
-        return true;
+
+        true
+    }
+
+    pub fn clear(path: Option<&Path>) -> std::io::Result<()> {
+        let path = path.unwrap_or(Path::new(DEFAULT_DB_PATH));
+        std::fs::remove_file(path)
+    }
+
+    fn get_file_record(&self, file_path: &Path) -> Option<u128> {
+        self.files_touch_time_record
+            .get(file_path)
+            .map(|t| t.parse().unwrap())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.files_touch_time_record.is_empty()
     }
 }
 
@@ -79,5 +101,5 @@ impl FileDistributorCache {
 fn get_file_last_modified_timestamp(file_path: &Path) -> QueryMetaResult<u128> {
     let meta = std::fs::metadata(file_path)?;
     let result = meta.modified()?.duration_since(std::time::SystemTime::UNIX_EPOCH);
-    return Ok(result.map(|d| d.as_millis()).unwrap());
+    Ok(result.map(|d| d.as_millis()).unwrap())
 }

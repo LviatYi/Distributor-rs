@@ -6,7 +6,7 @@
 
 其提供了一个愚蠢的功能，为某些愚蠢的项目管理工具服务。
 
-v0.1.0
+v0.2.0
 by LviatYi
 
 ## Usage 使用
@@ -26,7 +26,7 @@ Distributor 提供了一组 Cli 命令，用于运行分发与配置管理。
 将 `/resource/` 目录下的文件分发到 `/run/` 目录下。
 
 ```shell
-./distributor.exe add -s resource/ -t run/
+./distributor.exe add Resource -r resource/ -t run/
 ```
 
 输出配置。

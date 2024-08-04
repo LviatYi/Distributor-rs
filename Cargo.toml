@@ -1,6 +1,6 @@
 [package]
 name = "distributor"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["LviatYi"]
 
@@ -11,8 +11,13 @@ toml = "0.8.11"
 serde = { version = "1.0.197", features = ["derive"] }
 clap = { version = "4.5.3", features = ["derive"] }
 sha2 = "0.10.8"
+bincode = "1.3.3"
+glob = "0.3.1"
 
 [profile.release]
 lto = true
 opt-level = 'z'
 codegen-units = 1
+
+[dev-dependencies]
+tempfile = "3.10.1"
